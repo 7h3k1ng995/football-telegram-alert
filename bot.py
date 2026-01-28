@@ -1,6 +1,8 @@
 import requests
-import time
 import os
+from flask import Flask
+
+app = Flask(__name__)
 
 API_KEY = os.getenv("API_FOOTBALL_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -11,20 +13,19 @@ HEADERS = {
     "x-apisports-key": API_KEY
 }
 
-sent_matches = set()
-
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
         "text": message
     }
-    requests.post(url, data=payload)
+    requests.post(url, json=payload, timeout=10)
 
-while True:
+@app.route("/")
+def check_matches():
     try:
         response = requests.get(API_URL, headers=HEADERS, timeout=10)
-        data = response.json()["response"]
+        data = response.json().get("response", [])
 
         for match in data:
             fixture = match["fixture"]
@@ -32,31 +33,25 @@ while True:
             teams = match["teams"]
 
             minute = fixture["status"]["elapsed"]
-            home_goals = goals["home"]
-            away_goals = goals["away"]
-
             if minute is None:
                 continue
 
-            score = f"{home_goals}-{away_goals}"
+            home_goals = goals["home"]
+            away_goals = goals["away"]
 
-            if 70 <= minute <= 90 and score in ["0-0", "1-1", "2-2"]:
-                match_id = fixture["id"]
+            if 70 <= minute <= 90 and (home_goals, away_goals) in [(0,0), (1,1), (2,2)]:
+                message = (
+                    f"⚽ PARTITA INTERESSANTE\n\n"
+                    f"{teams['home']['name']} vs {teams['away']['name']}\n"
+                    f"⏱ Minuto: {minute}\n"
+                    f"📊 Risultato: {home_goals}-{away_goals}"
+                )
+                send_telegram(message)
 
-                if match_id not in sent_matches:
-                    sent_matches.add(match_id)
-
-                    message = (
-                        f"⚽ PARTITA INTERESSANTE\n\n"
-                        f"{teams['home']['name']} vs {teams['away']['name']}\n"
-                        f"⏱ Minuto: {minute}\n"
-                        f"📊 Risultato: {score}"
-                    )
-
-                    send_telegram(message)
-
-        time.sleep(120)
+        return "OK"
 
     except Exception as e:
-        print("Errore:", e)
-        time.sleep(120)
+        return str(e)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
