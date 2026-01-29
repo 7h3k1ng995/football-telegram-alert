@@ -1,35 +1,34 @@
 import requests
-from bs4 import BeautifulSoup
 from flask import Flask
 
 app = Flask(__name__)
 
-URL = "https://www.livescore.com/en/football/live/"  # URL di test
-
 @app.route("/")
-def home():
-    print("BOT AVVIATO")
+def test_live_matches():
+    url = "https://www.scorebat.com/video-api/v3/"
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10)"
-    }
+    response = requests.get(url, timeout=10)
 
-    response = requests.get(URL, headers=headers)
+    if response.status_code != 200:
+        return f"Errore API: {response.status_code}"
 
-    print("STATUS CODE:", response.status_code)
+    data = response.json()
 
-    # 🔴 DEBUG: stampiamo HTML ricevuto
-    html_preview = response.text[:2000]
-    print("HTML PREVIEW ↓↓↓")
-    print(html_preview)
-    print("HTML PREVIEW ↑↑↑")
+    live_matches = [
+        match for match in data.get("response", [])
+        if match.get("competition", {}).get("is_live") is True
+    ]
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    if not live_matches:
+        return "Nessuna partita live trovata."
 
-    # per ora NON cerchiamo partite
-    print("PARSING COMPLETATO")
+    output = []
+    for m in live_matches[:5]:  # limitiamo a 5 per ora
+        home = m.get("title", "N/A")
+        comp = m.get("competition", {}).get("name", "N/A")
+        output.append(f"{home} | {comp}")
 
-    return "Bot online - check logs"
+    return "<br>".join(output)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
