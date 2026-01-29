@@ -13,8 +13,10 @@ TELEGRAM_CHAT_ID = "INSERISCI_CHAT_ID"
 URL = "https://m.livescore.in/it/"
 CHECK_INTERVAL = 300  # 5 minuti
 
+sent_matches = set()
+
 # =========================
-# FLASK (keep alive Render)
+# FLASK
 # =========================
 app = Flask(__name__)
 
@@ -40,7 +42,7 @@ def send_telegram_message(text):
 # SCRAPING
 # =========================
 def scrape_live_matches():
-    print("🔍 Scraping partite live...")
+    print("🔍 Controllo partite live...")
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -53,22 +55,41 @@ def scrape_live_matches():
         return
 
     soup = BeautifulSoup(r.text, "html.parser")
-
     matches = soup.select("div.row-gray, div.row-white")
 
     for match in matches:
         try:
             teams = match.select_one(".ply").get_text(" ", strip=True)
             score = match.select_one(".sco").get_text(strip=True)
+            minute = match.select_one(".min").get_text(strip=True)
 
-            if score in ["0-0", "1-1", "2-2"]:
-                message = (
-                    "⚽ PARTITA LIVE\n"
-                    f"{teams}\n"
-                    f"Risultato: {score}"
-                )
-                print("✅ MATCH TROVATO:", teams, score)
-                send_telegram_message(message)
+            if "'" not in minute:
+                continue
+
+            minute_number = int(minute.replace("'", ""))
+
+            if minute_number < 70:
+                continue
+
+            if score not in ["0-0", "1-1", "2-2"]:
+                continue
+
+            match_id = f"{teams}-{score}"
+
+            if match_id in sent_matches:
+                continue
+
+            sent_matches.add(match_id)
+
+            message = (
+                "⚽ POSSIBILE GOL!\n\n"
+                f"{teams}\n"
+                f"Risultato: {score}\n"
+                f"Minuto: {minute_number}'"
+            )
+
+            print("✅ ALERT:", teams, score, minute_number)
+            send_telegram_message(message)
 
         except Exception:
             continue
