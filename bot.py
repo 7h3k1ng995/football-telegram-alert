@@ -5,40 +5,30 @@ import random
 app = Flask(__name__)
 
 SCOREBAT_URL = "https://www.scorebat.com/video-api/v3/"
-
-# Risultati ammessi
 ALLOWED_SCORES = ["0-0", "1-1", "2-2"]
 
 @app.route("/")
-def live_matches_test():
+def test_live_matches():
     try:
         r = requests.get(SCOREBAT_URL, timeout=10)
         data = r.json()
 
-        output = []
         matches = data.get("response", [])
+        output = []
 
         for match in matches:
-            home = match["title"].split(" - ")[0]
-            away = match["title"].split(" - ")[1]
-            competition = match["competition"]
-            league = competition["name"]
-            country = competition["country"]
+            title = match.get("title", "Unknown match")
 
             # 🔴 SIMULAZIONE LIVE
             minute = random.randint(70, 90)
-            score = random.choice(["0-0", "1-1", "2-2", "2-1", "3-1"])
+            score = random.choice(["0-0", "1-1", "2-2", "2-1", "3-0"])
 
-            # FILTRI
-            if minute < 70 or minute > 90:
-                continue
             if score not in ALLOWED_SCORES:
                 continue
 
             msg = (
                 f"⚽ LIVE {minute}'\n"
-                f"{home} vs {away}\n"
-                f"{league} ({country})\n"
+                f"{title}\n"
                 f"Risultato: {score}\n"
                 f"------------------------"
             )
