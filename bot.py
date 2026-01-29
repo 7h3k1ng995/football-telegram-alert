@@ -1,50 +1,63 @@
-from flask import Flask, Response
+from flask import Flask
 import requests
-import random
 
 app = Flask(__name__)
 
-SCOREBAT_URL = "https://www.scorebat.com/video-api/v3/"
-ALLOWED_SCORES = ["0-0", "1-1", "2-2"]
+SCOREBAT_LIVE_URL = "https://www.scorebat.com/video-api/v3/feed/?token=demo"
 
 @app.route("/")
-def test_live_matches():
+def home():
     try:
-        r = requests.get(SCOREBAT_URL, timeout=10)
+        r = requests.get(SCOREBAT_LIVE_URL, timeout=10)
         data = r.json()
 
         matches = data.get("response", [])
-        output = []
+
+        output = ""
 
         for match in matches:
-            title = match.get("title", "Unknown match")
-
-            # 🔴 SIMULAZIONE LIVE
-            minute = random.randint(70, 90)
-            score = random.choice(["0-0", "1-1", "2-2", "2-1", "3-0"])
-
-            if score not in ALLOWED_SCORES:
+            if match.get("side1") is None or match.get("side2") is None:
                 continue
 
-            msg = (
-                f"⚽ LIVE {minute}'\n"
-                f"{title}\n"
-                f"Risultato: {score}\n"
-                f"------------------------"
-            )
+            # Minuto
+            minute = match.get("minute")
+            if minute is None:
+                continue
 
-            output.append(msg)
+            try:
+                minute = int(minute)
+            except:
+                continue
 
-        if not output:
-            return Response(
-                "Nessuna partita LIVE trovata (70–90 / 0-0 1-1 2-2)",
-                mimetype="text/plain"
-            )
+            if minute < 70 or minute > 90:
+                continue
 
-        return Response("\n\n".join(output), mimetype="text/plain")
+            # Risultato
+            score = match.get("score", "")
+            if score not in ["0-0", "1-1", "2-2"]:
+                continue
+
+            home = match["side1"]["name"]
+            away = match["side2"]["name"]
+
+            competition = match.get("competition", {})
+            league = competition.get("name", "Campionato sconosciuto")
+            country = competition.get("country", "Nazione sconosciuta")
+
+            output += f"""⚽ LIVE {minute}'
+🏆 {league} ({country})
+{home} - {away}
+Risultato: {score}
+------------------------
+"""
+
+        if output == "":
+            return "Nessuna partita LIVE valida al momento"
+
+        return output
 
     except Exception as e:
-        return Response(f"Errore: {e}", mimetype="text/plain")
+        return f"Errore: {str(e)}"
 
 
 if __name__ == "__main__":
