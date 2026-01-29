@@ -4,29 +4,24 @@ from flask import Flask
 app = Flask(__name__)
 
 @app.route("/")
-def test_live_matches():
+def test_api():
     url = "https://www.scorebat.com/video-api/v3/"
 
-    response = requests.get(url, timeout=10)
+    r = requests.get(url, timeout=10)
+    data = r.json()
 
-    if response.status_code != 200:
-        return f"Errore API: {response.status_code}"
+    matches = data.get("response", [])
 
-    data = response.json()
-
-    live_matches = [
-        match for match in data.get("response", [])
-        if match.get("competition", {}).get("is_live") is True
-    ]
-
-    if not live_matches:
-        return "Nessuna partita live trovata."
+    if not matches:
+        return "Nessuna partita trovata"
 
     output = []
-    for m in live_matches[:5]:  # limitiamo a 5 per ora
-        home = m.get("title", "N/A")
-        comp = m.get("competition", {}).get("name", "N/A")
-        output.append(f"{home} | {comp}")
+    for m in matches[:10]:
+        title = m.get("title", "N/A")
+        competition = m.get("competition", "N/A")
+        date = m.get("date", "N/A")
+
+        output.append(f"{title} | {competition} | {date}")
 
     return "<br>".join(output)
 
