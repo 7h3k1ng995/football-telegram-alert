@@ -7,50 +7,59 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-def send_telegram(message):
+def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
+    requests.post(url, data={
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message
-    }
-    requests.post(url, data=payload)
+        "text": msg
+    })
 
 def check_matches():
     url = "https://www.thesportsdb.com/api/v1/json/3/livescore.php?s=Soccer"
-    r = requests.get(url, timeout=10)
-    data = r.json()
 
-    if not data or not data.get("events"):
-        return
+    try:
+        r = requests.get(url, timeout=10)
 
-    for match in data["events"]:
-        try:
-            home = int(match["intHomeScore"])
-            away = int(match["intAwayScore"])
+        if r.status_code != 200:
+            send_telegram("⚠️ TheSportsDB non risponde (status != 200)")
+            return
 
-            if (home == 0 and away == 0) or (home == 1 and away == 1):
-                league = match.get("strLeague", "Sconosciuto")
-                country = match.get("strCountry", "")
-                home_team = match["strHomeTeam"]
-                away_team = match["strAwayTeam"]
+        if not r.text.strip():
+            send_telegram("⚠️ TheSportsDB risposta vuota")
+            return
 
-                msg = (
-                    "⚽ PARTITA LIVE\n"
-                    f"{home_team} vs {away_team}\n"
-                    f"Risultato: {home}-{away}\n"
-                    f"Lega: {league} ({country})"
-                )
+        data = r.json()
 
-                send_telegram(msg)
-        except:
-            continue
+        events = data.get("events")
+        if not events:
+            send_telegram("ℹ️ Nessuna partita live ora")
+            return
+
+        for match in events:
+            try:
+                h = int(match["intHomeScore"])
+                a = int(match["intAwayScore"])
+
+                if (h, a) in [(0, 0), (1, 1)]:
+                    msg = (
+                        "⚽ MATCH LIVE\n"
+                        f"{match['strHomeTeam']} vs {match['strAwayTeam']}\n"
+                        f"Risultato: {h}-{a}\n"
+                        f"Lega: {match.get('strLeague','?')}"
+                    )
+                    send_telegram(msg)
+            except:
+                continue
+
+    except Exception as e:
+        send_telegram(f"❌ Errore API: {e}")
 
 @app.route("/")
 def home():
     return "OK"
 
 if __name__ == "__main__":
-    # test immediato all'avvio
+    send_telegram("✅ Bot avviato correttamente")
     check_matches()
 
     port = int(os.environ.get("PORT", 10000))
