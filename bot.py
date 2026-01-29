@@ -1,32 +1,35 @@
 import requests
 from bs4 import BeautifulSoup
+from flask import Flask
 
-URL = "https://www.livescore.in/it/"
+app = Flask(__name__)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
+URL = "https://www.livescore.com/en/football/live/"  # URL di test
 
-def test_scraping():
-    r = requests.get(URL, headers=HEADERS, timeout=15)
-    print("STATUS CODE:", r.status_code)
+@app.route("/")
+def home():
+    print("BOT AVVIATO")
 
-    soup = BeautifulSoup(r.text, "html.parser")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10)"
+    }
 
-    rows = soup.select("div.event__match")
-    print("PARTITE TROVATE:", len(rows))
+    response = requests.get(URL, headers=headers)
 
-    for row in rows[:5]:
-        home = row.select_one(".event__participant--home")
-        away = row.select_one(".event__participant--away")
-        score = row.select_one(".event__score")
-        minute = row.select_one(".event__stage")
+    print("STATUS CODE:", response.status_code)
 
-        if home and away and score and minute:
-            print(
-                f"{minute.text.strip()} | "
-                f"{home.text.strip()} {score.text.strip()} {away.text.strip()}"
-            )
+    # 🔴 DEBUG: stampiamo HTML ricevuto
+    html_preview = response.text[:2000]
+    print("HTML PREVIEW ↓↓↓")
+    print(html_preview)
+    print("HTML PREVIEW ↑↑↑")
+
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # per ora NON cerchiamo partite
+    print("PARSING COMPLETATO")
+
+    return "Bot online - check logs"
 
 if __name__ == "__main__":
-    test_scraping()
+    app.run(host="0.0.0.0", port=10000)
