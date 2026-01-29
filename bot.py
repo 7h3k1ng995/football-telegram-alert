@@ -1,73 +1,80 @@
 import os
 import requests
 from flask import Flask
+from datetime import datetime
 
 app = Flask(__name__)
 
-# ================== CONFIG ==================
-API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
+# ================= TELEGRAM =================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-API_URL = "https://v3.football.api-sports.io/fixtures?live=all"
+SPORTDB_URL = "https://api.sportdb.dev/football/live"
 
-HEADERS = {
-    "x-apisports-key": API_FOOTBALL_KEY
-}
+sent_matches = set()  # evita doppioni
 
-# ================== UTILS ==================
+
 def country_flag(country):
     if not country:
         return "🏳️"
     return "".join(chr(127397 + ord(c)) for c in country.upper() if c.isalpha())
 
 
-def send_telegram(message):
+def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
+    requests.post(url, json={
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-    requests.post(url, json=payload)
+        "text": msg
+    })
 
 
-# ================== MAIN LOGIC ==================
+def check_time_window():
+    hour = datetime.now().hour
+    return 13 <= hour < 24
+
+
 def check_matches():
-    response = requests.get(API_URL, headers=HEADERS, timeout=15)
-    data = response.json()
+    if not check_time_window():
+        return
 
-    for match in data.get("response", []):
-        fixture = match["fixture"]
-        league = match["league"]
-        teams = match["teams"]
-        goals = match["goals"]
+    r = requests.get(SPORTDB_URL, timeout=15)
+    data = r.json()
 
-        minute = fixture["status"]["elapsed"]
-        home_goals = goals["home"]
-        away_goals = goals["away"]
+    for match in data.get("matches", []):
+        home = match.get("home")
+        away = match.get("away")
+        score = match.get("score", "")
 
-        if minute is None:
+        if not home or not away or "-" not in score:
             continue
 
-        if 70 <= minute <= 90:
-            score = (home_goals, away_goals)
+        try:
+            hg, ag = map(int, score.split("-"))
+        except:
+            continue
 
-            if score in [(0,0), (1,1), (2,2)]:
-                country = league.get("country", "")
-                flag = country_flag(country)
+        if (hg, ag) not in [(0,0), (1,1), (2,2)]:
+            continue
 
-                message = (
-                    f"⚽ <b>LIVE ALERT</b>\n\n"
-                    f"{flag} <b>{country}</b> – {league['name']}\n"
-                    f"⏱️ <b>{minute}'</b>\n\n"
-                    f"<b>{teams['home']['name']}</b> {home_goals} – {away_goals} <b>{teams['away']['name']}</b>\n"
-                )
+        match_id = f"{home}-{away}-{score}"
+        if match_id in sent_matches:
+            continue
 
-                send_telegram(message)
+        league = match.get("competition", "Unknown League")
+        country = match.get("country", "")
+        flag = country_flag(country)
+
+        message = (
+            f"⚽ LIVE ALERT\n\n"
+            f"{flag} {country} – {league}\n"
+            f"⏱️ LIVE\n\n"
+            f"{home} {hg} – {ag} {away}"
+        )
+
+        send_telegram(message)
+        sent_matches.add(match_id)
 
 
-# ================== FLASK ==================
 @app.route("/")
 def home():
     check_matches()
