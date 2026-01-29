@@ -1,46 +1,51 @@
-from flask import Flask
 import requests
+from bs4 import BeautifulSoup
 
-app = Flask(__name__)
+URL = "https://www.flashscore.it/"
 
-URL = "https://www.scorebat.com/video-api/v3/feed/?token=demo"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36",
+    "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
+}
 
-@app.route("/")
-def home():
-    try:
-        r = requests.get(URL, timeout=10)
-        data = r.json()
+def get_live_matches():
+    response = requests.get(URL, headers=HEADERS, timeout=15)
 
-        matches = data.get("response", [])
+    if response.status_code != 200:
+        return "Errore nel caricare Flashscore"
 
-        if not matches:
-            return "Nessuna partita trovata"
+    soup = BeautifulSoup(response.text, "html.parser")
 
-        output = ""
+    matches = soup.select("div.event__match")
 
-        for match in matches:
-            home = match.get("side1", {}).get("name", "N/A")
-            away = match.get("side2", {}).get("name", "N/A")
-            score = match.get("score", "N/A")
-            minute = match.get("minute", "N/A")
+    if not matches:
+        return "Nessuna partita LIVE trovata"
 
-            competition = match.get("competition", {})
-            league = competition.get("name", "Sconosciuto")
-            country = competition.get("country", "Sconosciuto")
+    risultati = []
 
-            output += f"""⚽ LIVE
-🏆 {league} ({country})
-{home} - {away}
-Minuto: {minute}
-Risultato: {score}
-----------------------
-"""
+    for match in matches:
+        try:
+            minute = match.select_one(".event__stage").get_text(strip=True)
+            home = match.select_one(".event__participant--home").get_text(strip=True)
+            away = match.select_one(".event__participant--away").get_text(strip=True)
+            score_home = match.select_one(".event__score--home").get_text(strip=True)
+            score_away = match.select_one(".event__score--away").get_text(strip=True)
 
-        return output
+            risultati.append(
+                f"⚽ LIVE {minute}\n"
+                f"{home} - {away}\n"
+                f"Risultato: {score_home}-{score_away}\n"
+                f"---------------------"
+            )
 
-    except Exception as e:
-        return f"Errore: {str(e)}"
+        except:
+            continue
 
+    return "\n".join(risultati) if risultati else "Nessuna partita LIVE valida"
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+# endpoint Render
+def application(environ, start_response):
+    data = get_live_matches()
+    start_response("200 OK", [("Content-Type", "text/plain; charset=utf-8")])
+    return [data.encode("utf-8")]
