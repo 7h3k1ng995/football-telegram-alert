@@ -1,26 +1,21 @@
-import requests
 from flask import Flask
-
-TELEGRAM_TOKEN = "INSERISCI_TOKEN"
-CHAT_ID = "INSERISCI_CHAT_ID"
+import requests
+import os
 
 app = Flask(__name__)
 
-def send_telegram_message(text):
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": text
-    }
-    r = requests.post(url, json=payload)
-    print("STATUS:", r.status_code)
-    print("RESPONSE:", r.text)
+    data = {"chat_id": CHAT_ID, "text": msg}
+    requests.post(url, data=data)
 
 @app.route("/")
 def home():
-    return "Bot attivo", 200
+    send_telegram("✅ Ping ricevuto: Render → Telegram OK")
+    return "OK", 200
 
 if __name__ == "__main__":
-    print("Avvio bot...")
-    send_telegram_message("🚀 Test Render → Telegram")
     app.run(host="0.0.0.0", port=10000)
