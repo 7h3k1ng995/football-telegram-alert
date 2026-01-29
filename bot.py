@@ -1,106 +1,98 @@
-import os
-import time
 import requests
+import time
+import os
 from flask import Flask
 
-# ================= CONFIG =================
-
+# ========= CONFIG =========
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
-# TheSportsDB - LIVE EVENTS (Soccer)
-URL_LIVE = "https://www.thesportsdb.com/api/v1/json/3/livescore.php?s=Soccer"
+SOFASCORE_LIVE_URL = "https://api.sofascore.com/api/v1/sport/football/events/live"
 
 CHECK_INTERVAL = 600  # 10 minuti
+SENT_ALERTS = set()   # evita duplicati
 
-sent_alerts = set()
-
+# ========= FLASK =========
 app = Flask(__name__)
 
-# ================= TELEGRAM =================
+@app.route("/")
+def home():
+    return "Bot live OK"
 
-def send_telegram(text):
-    try:
-        requests.post(
-            TELEGRAM_URL,
-            data={
-                "chat_id": TELEGRAM_CHAT_ID,
-                "text": text,
-                "parse_mode": "HTML"
-            },
-            timeout=10
-        )
-    except:
-        pass
+# ========= TELEGRAM =========
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    }
+    requests.post(url, json=payload, timeout=10)
 
-# ================= MATCH CHECK =================
-
+# ========= CORE LOGIC =========
 def check_matches():
     try:
-        r = requests.get(URL_LIVE, timeout=15)
+        r = requests.get(SOFASCORE_LIVE_URL, timeout=15)
 
         if r.status_code != 200:
-            send_telegram("⚠️ TheSportsDB non risponde (status != 200)")
+            print("❌ Sofascore non risponde:", r.status_code)
             return
 
         data = r.json()
-        events = data.get("events")
+        events = data.get("events", [])
 
-        if not events:
-            return
-
-        for m in events:
+        for match in events:
             try:
-                hs = m.get("intHomeScore")
-                as_ = m.get("intAwayScore")
-                event_id = m.get("idEvent")
+                home = match["homeTeam"]["name"]
+                away = match["awayTeam"]["name"]
 
-                if None in [hs, as_, event_id]:
-                    continue
+                home_goals = match["homeScore"]["current"]
+                away_goals = match["awayScore"]["current"]
 
-                score = f"{hs}-{as_}"
+                minute = match.get("time", {}).get("current", "?")
+
+                score = f"{home_goals}-{away_goals}"
 
                 if score not in ["0-0", "1-1", "2-2"]:
                     continue
 
-                if event_id in sent_alerts:
+                match_id = match["id"]
+                alert_key = f"{match_id}-{score}"
+
+                if alert_key in SENT_ALERTS:
                     continue
 
-                sent_alerts.add(event_id)
+                tournament = match["tournament"]["name"]
+                country = match["tournament"]["category"]["name"]
 
-                msg = (
-                    "⚽ <b>LIVE ALERT</b>\n\n"
-                    f"🏆 {m.get('strLeague')}\n"
-                    f"{m.get('strHomeTeam')} vs {m.get('strAwayTeam')}\n"
-                    f"📊 Risultato: <b>{score}</b>\n\n"
-                    "👉 Valuta ingresso LTD"
+                message = (
+                    f"⚽ <b>LIVE MATCH</b>\n"
+                    f"🏳️ {country}\n"
+                    f"🏆 {tournament}\n\n"
+                    f"{home} <b>{home_goals} - {away_goals}</b> {away}\n"
+                    f"⏱ Minuto: {minute}"
                 )
 
-                send_telegram(msg)
+                send_telegram(message)
+                SENT_ALERTS.add(alert_key)
 
-            except:
-                continue
+            except Exception as e:
+                print("Errore partita:", e)
 
-    except:
-        pass
+    except Exception as e:
+        print("Errore generale:", e)
 
-# ================= LOOP =================
-
-def loop():
-    send_telegram("✅ Bot avviato correttamente")
+# ========= LOOP =========
+def run_bot():
     while True:
         check_matches()
         time.sleep(CHECK_INTERVAL)
 
-# ================= FLASK =================
-
-@app.route("/")
-def home():
-    return "Bot attivo"
-
+# ========= START =========
 if __name__ == "__main__":
-    import threading
-    threading.Thread(target=loop).start()
-    app.run(host="0.0.0.0", port=10000)
+    from threading import Thread
+
+    Thread(target=run_bot).start()
+
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
