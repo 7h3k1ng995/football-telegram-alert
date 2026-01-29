@@ -1,86 +1,101 @@
-import os
 import requests
 from flask import Flask
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 
-# ================= TELEGRAM =================
+# =======================
+# CONFIG
+# =======================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+CHAT_ID = os.environ.get("CHAT_ID")
 
-SPORTDB_URL = "https://api.sportdb.dev/football/live"
+SPORTDB_URL = "https://www.thesportsdb.com/api/v1/json/3/eventsday.php?s=Soccer"
 
-sent_matches = set()  # evita doppioni
-
-
-def country_flag(country):
-    if not country:
-        return "🏳️"
-    return "".join(chr(127397 + ord(c)) for c in country.upper() if c.isalpha())
-
-
-def send_telegram(msg):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": msg
-    })
-
-
+# =======================
+# UTILS
+# =======================
 def check_time_window():
-    hour = datetime.now().hour
-    return true
+    now = datetime.now().hour
+    return 13 <= now <= 23  # 13:00 -> 23:59
+
+
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    requests.post(url, json=payload, timeout=10)
+
+
+def get_matches():
+    today = datetime.now().strftime("%Y-%m-%d")
+    response = requests.get(f"{SPORTDB_URL}&d={today}", timeout=15)
+    data = response.json()
+    return data.get("events", [])
 
 
 def check_matches():
-    if not check_time_window():
-        return
+    matches = get_matches()
 
-    r = requests.get(SPORTDB_URL, timeout=15)
-    data = r.json()
-
-    for match in data.get("matches", []):
-        home = match.get("home")
-        away = match.get("away")
-        score = match.get("score", "")
-
-        if not home or not away or "-" not in score:
-            continue
-
+    for match in matches:
         try:
-            hg, ag = map(int, score.split("-"))
-        except:
-            continue
+            minute = match.get("intTime")
+            score_home = match.get("intHomeScore")
+            score_away = match.get("intAwayScore")
 
-        if (hg, ag) not in [(0,0), (1,1), (2,2)]:
-            continue
+            if not minute or not score_home or not score_away:
+                continue
 
-        match_id = f"{home}-{away}-{score}"
-        if match_id in sent_matches:
-            continue
+            minute = int(minute)
+            score_home = int(score_home)
+            score_away = int(score_away)
 
-        league = match.get("competition", "Unknown League")
-        country = match.get("country", "")
-        flag = country_flag(country)
+            if minute < 70 or minute > 90:
+                continue
 
-        message = (
-            f"⚽ LIVE ALERT\n\n"
-            f"{flag} {country} – {league}\n"
-            f"⏱️ LIVE\n\n"
-            f"{home} {hg} – {ag} {away}"
-        )
+            if score_home == score_away and score_home in [0, 1, 2]:
+                league = match.get("strLeague", "Campionato sconosciuto")
+                country = match.get("strCountry", "Nazione sconosciuta")
+                home = match.get("strHomeTeam")
+                away = match.get("strAwayTeam")
 
-        send_telegram(message)
-        sent_matches.add(match_id)
+                message = (
+                    "⚽ PARTITA BLOCCATA\n\n"
+                    f"🏳️ {country}\n"
+                    f"🏆 {league}\n"
+                    f"{home} vs {away}\n"
+                    f"⏱ Minuto: {minute}\n"
+                    f"📊 Risultato: {score_home}-{score_away}"
+                )
+
+                send_telegram(message)
+
+        except Exception as e:
+            print("Errore match:", e)
 
 
+# =======================
+# ROUTE
+# =======================
 @app.route("/")
 def home():
-    check_matches()
-    return "OK"
+    try:
+        if not check_time_window():
+            return "OK"
+
+        check_matches()
+        return "OK"
+
+    except Exception as e:
+        print("ERRORE GENERALE:", e)
+        return "OK"
 
 
+# =======================
+# START
+# =======================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
