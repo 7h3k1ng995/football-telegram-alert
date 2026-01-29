@@ -1,30 +1,45 @@
 import os
+import time
 import requests
-from flask import Flask, jsonify
+from flask import Flask
 
-app = Flask(__name__)
+# ================= CONFIG =================
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-THESPORTSDB_LIVE_URL = "https://www.thesportsdb.com/api/v1/json/3/livescore.php?s=Soccer"
+TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-sent_alerts = set()  # evita doppioni
+# TheSportsDB - LIVE EVENTS (Soccer)
+URL_LIVE = "https://www.thesportsdb.com/api/v1/json/3/livescore.php?s=Soccer"
 
+CHECK_INTERVAL = 600  # 10 minuti
 
-def send_telegram(msg):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": msg,
-        "parse_mode": "HTML"
-    }
-    requests.post(url, json=payload, timeout=10)
+sent_alerts = set()
 
+app = Flask(__name__)
+
+# ================= TELEGRAM =================
+
+def send_telegram(text):
+    try:
+        requests.post(
+            TELEGRAM_URL,
+            data={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": text,
+                "parse_mode": "HTML"
+            },
+            timeout=10
+        )
+    except:
+        pass
+
+# ================= MATCH CHECK =================
 
 def check_matches():
     try:
-        r = requests.get(THESPORTSDB_LIVE_URL, timeout=15)
+        r = requests.get(URL_LIVE, timeout=15)
 
         if r.status_code != 200:
             send_telegram("⚠️ TheSportsDB non risponde (status != 200)")
@@ -34,25 +49,18 @@ def check_matches():
         events = data.get("events")
 
         if not events:
-            return  # nessuna partita live
+            return
 
-        for match in events:
+        for m in events:
             try:
-                minute = int(match.get("intTime", 0))
-                home = match.get("strHomeTeam")
-                away = match.get("strAwayTeam")
-                league = match.get("strLeague")
-                score_home = match.get("intHomeScore")
-                score_away = match.get("intAwayScore")
-                event_id = match.get("idEvent")
+                hs = m.get("intHomeScore")
+                as_ = m.get("intAwayScore")
+                event_id = m.get("idEvent")
 
-                if None in [score_home, score_away, event_id]:
+                if None in [hs, as_, event_id]:
                     continue
 
-                score = f"{score_home}-{score_away}"
-
-                if minute < 70 or minute > 90:
-                    continue
+                score = f"{hs}-{as_}"
 
                 if score not in ["0-0", "1-1", "2-2"]:
                     continue
@@ -64,33 +72,35 @@ def check_matches():
 
                 msg = (
                     "⚽ <b>LIVE ALERT</b>\n\n"
-                    f"🏆 <b>{league}</b>\n"
-                    f"{home} vs {away}\n"
-                    f"⏱ Minuto: {minute}\n"
+                    f"🏆 {m.get('strLeague')}\n"
+                    f"{m.get('strHomeTeam')} vs {m.get('strAwayTeam')}\n"
                     f"📊 Risultato: <b>{score}</b>\n\n"
                     "👉 Valuta ingresso LTD"
                 )
 
                 send_telegram(msg)
 
-            except Exception:
+            except:
                 continue
 
-    except Exception as e:
-        send_telegram(f"❌ Errore bot: {e}")
+    except:
+        pass
 
+# ================= LOOP =================
+
+def loop():
+    send_telegram("✅ Bot avviato correttamente")
+    while True:
+        check_matches()
+        time.sleep(CHECK_INTERVAL)
+
+# ================= FLASK =================
 
 @app.route("/")
 def home():
-    return "Bot attivo", 200
-
-
-@app.route("/check")
-def check():
-    check_matches()
-    return jsonify({"status": "ok"}), 200
-
+    return "Bot attivo"
 
 if __name__ == "__main__":
-    send_telegram("✅ Bot avviato correttamente")
+    import threading
+    threading.Thread(target=loop).start()
     app.run(host="0.0.0.0", port=10000)
