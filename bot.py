@@ -30,7 +30,7 @@ def send_telegram(msg):
 
 def check_time_window():
     hour = datetime.now().hour
-    return 13 <= hour < 24
+    return true
 
 
 def check_matches():
