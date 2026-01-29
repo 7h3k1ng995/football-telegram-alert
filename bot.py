@@ -1,51 +1,63 @@
 import requests
 from bs4 import BeautifulSoup
+import time
 
-URL = "https://www.flashscore.it/"
+URL = "https://www.flashscore.com/"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36",
-    "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 }
 
 def get_live_matches():
-    response = requests.get(URL, headers=HEADERS, timeout=15)
+    r = requests.get(URL, headers=HEADERS, timeout=15)
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    if response.status_code != 200:
-        return "Errore nel caricare Flashscore"
+    matches = []
 
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    matches = soup.select("div.event__match")
-
-    if not matches:
-        return "Nessuna partita LIVE trovata"
-
-    risultati = []
-
-    for match in matches:
+    for match in soup.select("div.event__match"):
         try:
-            minute = match.select_one(".event__stage").get_text(strip=True)
-            home = match.select_one(".event__participant--home").get_text(strip=True)
-            away = match.select_one(".event__participant--away").get_text(strip=True)
-            score_home = match.select_one(".event__score--home").get_text(strip=True)
-            score_away = match.select_one(".event__score--away").get_text(strip=True)
+            status = match.select_one(".event__stage").text.strip()
+            if not status.isdigit():
+                continue
 
-            risultati.append(
-                f"⚽ LIVE {minute}\n"
-                f"{home} - {away}\n"
-                f"Risultato: {score_home}-{score_away}\n"
-                f"---------------------"
+            minute = int(status)
+            if minute < 70 or minute > 90:
+                continue
+
+            home = match.select_one(".event__participant--home").text.strip()
+            away = match.select_one(".event__participant--away").text.strip()
+
+            home_score = match.select_one(".event__score--home").text.strip()
+            away_score = match.select_one(".event__score--away").text.strip()
+
+            score = f"{home_score}-{away_score}"
+
+            if score not in ["0-0", "1-1", "2-2"]:
+                continue
+
+            matches.append(
+                f"⚽ LIVE {minute}'\n{home} - {away}\nRisultato: {score}"
             )
 
-        except:
+        except Exception:
             continue
 
-    return "\n".join(risultati) if risultati else "Nessuna partita LIVE valida"
+    return matches
 
-# endpoint Render
-def application(environ, start_response):
-    data = get_live_matches()
-    start_response("200 OK", [("Content-Type", "text/plain; charset=utf-8")])
-    return [data.encode("utf-8")]
+
+print("🚀 Bot avviato correttamente")
+
+while True:
+    try:
+        partite = get_live_matches()
+
+        if partite:
+            print("\n".join(partite))
+        else:
+            print("Nessuna partita valida al momento")
+
+    except Exception as e:
+        print("Errore:", e)
+
+    # aspetta 120 secondi
+    time.sleep(120)
