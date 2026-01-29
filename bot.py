@@ -3,56 +3,38 @@ import requests
 
 app = Flask(__name__)
 
-SCOREBAT_LIVE_URL = "https://www.scorebat.com/video-api/v3/feed/?token=demo"
+URL = "https://www.scorebat.com/video-api/v3/feed/?token=demo"
 
 @app.route("/")
 def home():
     try:
-        r = requests.get(SCOREBAT_LIVE_URL, timeout=10)
+        r = requests.get(URL, timeout=10)
         data = r.json()
 
         matches = data.get("response", [])
 
+        if not matches:
+            return "Nessuna partita trovata"
+
         output = ""
 
         for match in matches:
-            if match.get("side1") is None or match.get("side2") is None:
-                continue
-
-            # Minuto
-            minute = match.get("minute")
-            if minute is None:
-                continue
-
-            try:
-                minute = int(minute)
-            except:
-                continue
-
-            if minute < 70 or minute > 90:
-                continue
-
-            # Risultato
-            score = match.get("score", "")
-            if score not in ["0-0", "1-1", "2-2"]:
-                continue
-
-            home = match["side1"]["name"]
-            away = match["side2"]["name"]
+            home = match.get("side1", {}).get("name", "N/A")
+            away = match.get("side2", {}).get("name", "N/A")
+            score = match.get("score", "N/A")
+            minute = match.get("minute", "N/A")
 
             competition = match.get("competition", {})
-            league = competition.get("name", "Campionato sconosciuto")
-            country = competition.get("country", "Nazione sconosciuta")
+            league = competition.get("name", "Sconosciuto")
+            country = competition.get("country", "Sconosciuto")
 
-            output += f"""⚽ LIVE {minute}'
+            output += f"""⚽ LIVE
 🏆 {league} ({country})
 {home} - {away}
+Minuto: {minute}
 Risultato: {score}
-------------------------
+----------------------
 """
-
-        if output == "":
-            return "Nessuna partita LIVE valida al momento"
 
         return output
 
